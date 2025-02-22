@@ -1,66 +1,70 @@
-let scene, camera, renderer, tunnel, audioContext, analyser, dataArray;
-let audio = new Audio();
-let playPauseBtn = document.getElementById('playPauseBtn');
-let seekBar = document.getElementById('seekBar');
-let volumeControl = document.getElementById('volumeControl');
+// Audio Context Setup
+const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+const analyser = audioContext.createAnalyser();
+analyser.fftSize = 2048;
 
-document.getElementById('fileInput').addEventListener('change', function(event) {
-    let files = event.target.files;
-    if (files.length > 0) {
-        audio.src = URL.createObjectURL(files[0]);
-        audio.load();
-    }
-});
+// Visualizer Setup
+const canvas = document.getElementById('visualizer');
+const ctx = canvas.getContext('2d');
 
-playPauseBtn.addEventListener('click', function() {
-    if (audio.paused) {
-        audio.play();
-        playPauseBtn.textContent = "Pause";
-        startTunnel();
-    } else {
-        audio.pause();
-        playPauseBtn.textContent = "Play";
-    }
-});
+function resizeCanvas() {
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
-volumeControl.addEventListener('input', function() {
-    audio.volume = volumeControl.value;
-});
-
-function startTunnel() {
-    scene = new THREE.Scene();
-    camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
-
-    let geometry = new THREE.CylinderGeometry(5, 5, 20, 32, 1, true);
-    let material = new THREE.MeshBasicMaterial({ color: 0xff00ff, wireframe: true });
-    tunnel = new THREE.Mesh(geometry, material);
-    tunnel.rotation.x = Math.PI / 2;
-    scene.add(tunnel);
+// Audio Visualization Loop
+function visualize() {
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
     
-    camera.position.z = 10;
-
-    audioContext = new (window.AudioContext || window.webkitAudioContext)();
-    let source = audioContext.createMediaElementSource(audio);
-    analyser = audioContext.createAnalyser();
-    source.connect(analyser);
-    analyser.connect(audioContext.destination);
-    analyser.fftSize = 256;
-    dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-    animate();
+    analyser.getByteTimeDomainData(dataArray);
+    
+    // Tunnel effect logic
+    ctx.fillStyle = `hsl(${Date.now()/10 % 360}, 70%, 50%)`;
+    ctx.beginPath();
+    
+    for(let i = 0; i < bufferLength; i++) {
+        const radius = (dataArray[i]/128) * (canvas.width/2);
+        const angle = (i * Math.PI * 2)/bufferLength;
+        
+        const x = canvas.width/2 + Math.cos(angle) * radius;
+        const y = canvas.height/2 + Math.sin(angle) * radius;
+        
+        // Draw lines/shapes with dynamic colors
+    }
+    
+    requestAnimationFrame(visualize);
 }
 
-function animate() {
-    requestAnimationFrame(animate);
-    
-    analyser.getByteFrequencyData(dataArray);
-    let speed = dataArray[10] / 50;
+// Player Controls
+const audioElement = document.getElementById('audioPlayer');
+const source = audioContext.createMediaElementSource(audioElement);
+source.connect(analyser);
+analyser.connect(audioContext.destination);
 
-    tunnel.rotation.y += 0.01;
-    tunnel.position.z -= speed;
+// File Handling
+document.getElementById('fileInput').addEventListener('change', function(e) {
+    const files = Array.from(e.target.files);
+    updatePlaylist(files);
+});
 
-    renderer.render(scene, camera);
+// Playlist Management
+function updatePlaylist(files) {
+    // Store in localStorage and render list
+}
+
+// Fullscreen and Wake Lock
+document.getElementById('fullscreen').addEventListener('click', () => {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+        navigator.wakeLock?.request('screen');
+    }
+});
+
+// Beat Detection
+function detectBeat(dataArray) {
+    // Implement beat detection algorithm
+    // Update color scheme based on beat intensity
 }
