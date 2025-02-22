@@ -84,6 +84,7 @@
         let tracks = [];
         let isPlaying = false;
         let wakeLock = null;
+        let hue = 0;
 
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
@@ -111,17 +112,31 @@
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
 
+            // Downsample the data
+            const sampleSize = 4;
+            const downsampledData = [];
+            for (let i = 0; i < bufferLength; i += sampleSize) {
+                let sum = 0;
+                for (let j = 0; j < sampleSize && (i + j) < bufferLength; j++) {
+                    sum += dataArray[i + j];
+                }
+                downsampledData.push(sum / sampleSize);
+            }
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const barWidth = (canvas.width / bufferLength) * 8; // Increased bar width
-            let barHeight;
-            let x = 0;
+            const barCount = downsampledData.length;
+            const barHeight = canvas.height / barCount;
+            const barWidthMultiplier = (canvas.width * 0.6) / 255; // Normalize to 60% of canvas width
 
-            for (let i = 0; i < bufferLength; i++) {
-                barHeight = dataArray[i] * 2.5; // Increased bar height for better visibility
-                ctx.fillStyle = `hsl(${(i * 2) % 360}, 70%, 40%)`; // Color changes based on frequency
-                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-                x += barWidth * 0.5; // Adjust the spacing to create overlap
+            hue += 0.5; // Increment hue every frame
+            hue %= 360; // Wrap around
+
+            for (let i = 0; i < barCount; i++) {
+                const y = canvas.height - (i + 1) * barHeight;
+                const width = downsampledData[i] * barWidthMultiplier;
+                ctx.fillStyle = `hsl(${(hue + i * 2) % 360}, 100%, 50%)`;
+                ctx.fillRect(0, y, width, barHeight);
             }
 
             animationFrame = requestAnimationFrame(visualize);
