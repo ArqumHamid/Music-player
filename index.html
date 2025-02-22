@@ -4,267 +4,282 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Neon Vortex Music Player</title>
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.css">
     <style>
-        /* CSS included here for GitHub Pages compatibility */
-        :root {
-            --primary: #00ff9d;
-            --secondary: #ff00ff;
-            --bg: #0a0a0f;
-        }
-
         * {
-            box-sizing: border-box;
             margin: 0;
             padding: 0;
+            box-sizing: border-box;
         }
 
         body {
-            background: var(--bg);
+            background: #000;
             color: white;
-            font-family: 'Arial', sans-serif;
+            font-family: Arial, sans-serif;
             overflow: hidden;
+            touch-action: none;
         }
 
         #visualizer {
             position: fixed;
             top: 0;
             left: 0;
-            z-index: -1;
+            z-index: 0;
         }
 
-        .container {
-            display: grid;
-            grid-template-rows: 1fr auto;
-            height: 100vh;
-            padding: 1rem;
+        .ui-container {
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            transition: opacity 0.3s;
             backdrop-filter: blur(10px);
+            background: rgba(0,0,0,0.5);
         }
 
-        .playlist-container {
-            background: rgba(0,0,0,0.7);
-            border-radius: 1rem;
-            padding: 1rem;
-            margin-top: 1rem;
-            max-height: 50vh;
-            overflow-y: auto;
-        }
-
-        .controls {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 1rem;
-            padding: 1rem;
-            background: rgba(0,0,0,0.9);
-            border-radius: 1rem;
+        .fullscreen .ui-container {
+            opacity: 0;
+            pointer-events: none;
         }
 
         button {
             background: rgba(255,255,255,0.1);
-            border: 1px solid var(--primary);
+            border: 2px solid rgba(255,255,255,0.3);
             color: white;
-            padding: 0.5rem;
-            border-radius: 0.5rem;
+            padding: 12px 24px;
+            border-radius: 30px;
             cursor: pointer;
+            font-size: 16px;
             transition: all 0.3s ease;
         }
 
         button:hover {
-            background: var(--primary);
-            color: black;
+            background: rgba(255,255,255,0.2);
+            transform: scale(1.05);
         }
 
-        .song-item {
-            padding: 0.5rem;
-            margin: 0.2rem 0;
-            background: rgba(255,255,255,0.05);
-            border-radius: 0.5rem;
-            cursor: pointer;
+        #fileInput {
+            display: none;
         }
 
-        .progress-container {
-            grid-column: 1 / -1;
-            height: 5px;
-            background: rgba(255,255,255,0.1);
-            border-radius: 3px;
-        }
-
-        .progress-bar {
-            height: 100%;
-            background: linear-gradient(90deg, var(--primary), var(--secondary));
-            width: 0%;
-            transition: width 0.1s linear;
+        .song-info {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            max-width: 60%;
+            padding: 10px 20px;
+            background: rgba(0,0,0,0.7);
+            border-radius: 10px;
+            opacity: 0.9;
+            pointer-events: none;
         }
     </style>
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    <div class="container">
-        <div class="playlist-container">
-            <div id="playlist" class="playlist"></div>
-        </div>
-        
-        <div class="controls">
-            <input type="file" id="fileInput" hidden accept="audio/*" multiple directory webkitdirectory>
-            <button id="addMusic">Add Music</button>
-            <button id="prev">⏮</button>
-            <button id="playPause">⏯</button>
-            <button id="next">⏭</button>
-            <button id="fullscreen">⛶</button>
-            <div class="progress-container">
-                <div class="progress-bar"></div>
-            </div>
-        </div>
+    <div class="song-info" id="songInfo"></div>
+    
+    <div class="ui-container">
+        <input type="file" id="fileInput" accept="audio/*" multiple>
+        <button onclick="document.getElementById('fileInput').click()">
+            🎵 Add Music
+        </button>
+        <button id="fullscreenButton">🌀 Enter Vortex</button>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
     <script>
         // Audio Context Setup
-        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-        const analyser = audioContext.createAnalyser();
-        analyser.fftSize = 256;
-        const bufferLength = analyser.frequencyBinCount;
-        const dataArray = new Uint8Array(bufferLength);
-
-        // Player State
+        let audioContext, analyser, source;
         let currentTrack = 0;
         let tracks = [];
         let isPlaying = false;
-        let colorHue = 0;
+        let wakeLock = null;
+        let rotation = 0;
+        let beatHistory = [];
+        
+        // Visualization Parameters
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+        let hue = 0;
+        const tunnelSegments = [];
+        const MAX_SEGMENTS = 100;
+        const BASE_RADIUS = 50;
 
-        // DOM Elements
-        const visualizer = document.getElementById('visualizer');
-        const ctx = visualizer.getContext('2d');
-        const audioElement = new Audio();
-        const progressBar = document.querySelector('.progress-bar');
-
-        // Visualizer Setup
+        // Resize Handler
         function resizeCanvas() {
-            visualizer.width = window.innerWidth;
-            visualizer.height = window.innerHeight;
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
         }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Audio Graph
-        const source = audioContext.createMediaElementSource(audioElement);
-        source.connect(analyser);
-        analyser.connect(audioContext.destination);
+        // Audio Initialization
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 512;
+        }
 
-        // Visualization Loop
+        // Visualization Engine
         function visualize() {
-            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
-            ctx.fillRect(0, 0, visualizer.width, visualizer.height);
+            if (!analyser) return requestAnimationFrame(visualize);
 
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
+
+            // Beat Detection
+            const energy = dataArray.slice(0, 20).reduce((a, b) => a + b) / 20;
+            beatHistory.push(energy);
+            if (beatHistory.length > 10) beatHistory.shift();
             
-            ctx.beginPath();
-            ctx.arc(
-                visualizer.width/2,
-                visualizer.height/2,
-                dataArray[0] * 1.5,
-                0,
-                Math.PI * 2
-            );
+            const beatThreshold = Math.max(...beatHistory) * 0.8;
+            if (energy > beatThreshold) {
+                onBeatDetected(energy);
+            }
+
+            // Clear Canvas
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw Tunnel
+            ctx.save();
+            ctx.translate(canvas.width/2, canvas.height/2);
+            ctx.rotate(rotation * Math.PI/180);
+
+            tunnelSegments.forEach((segment, index) => {
+                const progress = index / tunnelSegments.length;
+                const alpha = 1 - progress;
+                const radius = BASE_RADIUS + (segment.energy * 2) + (index * 3);
+                
+                ctx.beginPath();
+                ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                ctx.strokeStyle = `hsla(${segment.hue}, 80%, 60%, ${alpha})`;
+                ctx.lineWidth = 2 + (energy/50);
+                ctx.stroke();
+            });
+
+            ctx.restore();
+
+            // Update State
+            rotation += (energy/100) * (document.fullscreenElement ? 2 : 1);
+            hue = (hue + 0.5) % 360;
+
+            // Add new segment
+            tunnelSegments.push({
+                energy: energy,
+                hue: hue
+            });
             
-            const gradient = ctx.createRadialGradient(
-                visualizer.width/2,
-                visualizer.height/2,
-                0,
-                visualizer.width/2,
-                visualizer.height/2,
-                dataArray[0] * 2
-            );
-            
-            gradient.addColorStop(0, `hsl(${colorHue}, 100%, 50%)`);
-            gradient.addColorStop(1, `hsl(${(colorHue + 120) % 360}, 100%, 50%)`);
-            
-            ctx.strokeStyle = gradient;
-            ctx.lineWidth = dataArray[10] / 10;
-            ctx.stroke();
-            
-            colorHue = (colorHue + dataArray[5] / 50) % 360;
+            if (tunnelSegments.length > MAX_SEGMENTS) {
+                tunnelSegments.shift();
+            }
+
             requestAnimationFrame(visualize);
         }
 
-        // Player Controls
-        document.getElementById('playPause').addEventListener('click', () => {
-            if (isPlaying) {
-                audioElement.pause();
-            } else {
-                audioElement.play();
-                if (audioContext.state === 'suspended') audioContext.resume();
+        function onBeatDetected(energy) {
+            hue = (hue + 50 + energy) % 360;
+            if (document.fullscreenElement) {
+                canvas.style.filter = `brightness(${100 + energy/2}%)`;
             }
-            isPlaying = !isPlaying;
-        });
-
-        // File Handling
-        document.getElementById('addMusic').addEventListener('click', () => {
-            document.getElementById('fileInput').click();
-        });
-
-        document.getElementById('fileInput').addEventListener('change', async (e) => {
-            const files = Array.from(e.target.files).filter(file => 
-                file.type.startsWith('audio/')
-            );
-            tracks = files;
-            updatePlaylist();
-            playTrack(0);
-        });
-
-        // Playlist Management
-        function updatePlaylist() {
-            const playlist = document.getElementById('playlist');
-            playlist.innerHTML = tracks
-                .map((track, i) => `
-                    <div class="song-item" data-index="${i}">
-                        ${track.name}
-                    </div>
-                `)
-                .join('');
-
-            new Sortable(playlist, {
-                animation: 150,
-                onEnd: (evt) => {
-                    const item = tracks.splice(evt.oldIndex, 1)[0];
-                    tracks.splice(evt.newIndex, 0, item);
-                    currentTrack = evt.newIndex;
-                }
-            });
         }
 
-        // Playback Functions
-        function playTrack(index) {
+        // Audio Controls
+        const audioElement = new Audio();
+        
+        async function playTrack(index) {
+            if (index < 0 || index >= tracks.length) return;
+            
             currentTrack = index;
-            const track = tracks[currentTrack];
-            audioElement.src = URL.createObjectURL(track);
-            audioElement.play();
+            const file = tracks[currentTrack];
+            
+            document.getElementById('songInfo').textContent = 
+                `${file.name} (${currentTrack + 1}/${tracks.length})`;
+            
+            audioElement.src = URL.createObjectURL(file);
+            await audioElement.play();
+            connectAudioNodes();
             isPlaying = true;
         }
 
-        // Progress Update
-        audioElement.addEventListener('timeupdate', () => {
-            const progress = (audioElement.currentTime / audioElement.duration) * 100;
-            progressBar.style.width = `${progress}%`;
-        });
+        function connectAudioNodes() {
+            if (source) source.disconnect();
+            source = audioContext.createMediaElementSource(audioElement);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+        }
 
-        // Fullscreen and Wake Lock
-        document.getElementById('fullscreen').addEventListener('click', () => {
+        // Gesture Controls
+        function handleGesture(clientX) {
+            const screenThird = window.innerWidth / 3;
+            if (clientX < screenThird) {
+                previousTrack();
+            } else if (clientX > screenThird * 2) {
+                nextTrack();
+            }
+        }
+
+        window.addEventListener('click', e => handleGesture(e.clientX));
+        window.addEventListener('touchend', e => 
+            handleGesture(e.changedTouches[0].clientX));
+
+        function nextTrack() {
+            currentTrack = (currentTrack + 1) % tracks.length;
+            playTrack(currentTrack);
+        }
+
+        function previousTrack() {
+            currentTrack = (currentTrack - 1 + tracks.length) % tracks.length;
+            playTrack(currentTrack);
+        }
+
+        // Fullscreen Management
+        async function toggleFullscreen() {
             if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-                navigator.wakeLock?.request('screen');
+                await document.documentElement.requestFullscreen();
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (err) {
+                    console.warn('Wake Lock failed:', err);
+                }
+                document.body.classList.add('fullscreen');
+            } else {
+                await document.exitFullscreen();
+                document.body.classList.remove('fullscreen');
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                wakeLock?.release();
             }
         });
 
-        // Initialize Visualization
-        visualize();
+        // File Handling
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            tracks = Array.from(e.target.files);
+            if (tracks.length) {
+                initAudio();
+                visualize();
+                playTrack(0);
+            }
+        });
 
-        // Auto-resume audio context
+        // Fullscreen Button
+        document.getElementById('fullscreenButton').addEventListener('click', toggleFullscreen);
+
+        // Auto-resume Audio Context
         document.addEventListener('click', () => {
-            if (audioContext.state === 'suspended') {
+            if (audioContext?.state === 'suspended') {
                 audioContext.resume();
             }
         }, { once: true });
+
+        // Track Ended Handler
+        audioElement.addEventListener('ended', nextTrack);
     </script>
 </body>
 </html>
