@@ -1,22 +1,270 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>Audio Illusion Player</title>
-    <link rel="stylesheet" href="styles.css">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Vortex Music Player</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.css">
+    <style>
+        /* CSS included here for GitHub Pages compatibility */
+        :root {
+            --primary: #00ff9d;
+            --secondary: #ff00ff;
+            --bg: #0a0a0f;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            background: var(--bg);
+            color: white;
+            font-family: 'Arial', sans-serif;
+            overflow: hidden;
+        }
+
+        #visualizer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: -1;
+        }
+
+        .container {
+            display: grid;
+            grid-template-rows: 1fr auto;
+            height: 100vh;
+            padding: 1rem;
+            backdrop-filter: blur(10px);
+        }
+
+        .playlist-container {
+            background: rgba(0,0,0,0.7);
+            border-radius: 1rem;
+            padding: 1rem;
+            margin-top: 1rem;
+            max-height: 50vh;
+            overflow-y: auto;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+            padding: 1rem;
+            background: rgba(0,0,0,0.9);
+            border-radius: 1rem;
+        }
+
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--primary);
+            color: white;
+            padding: 0.5rem;
+            border-radius: 0.5rem;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: var(--primary);
+            color: black;
+        }
+
+        .song-item {
+            padding: 0.5rem;
+            margin: 0.2rem 0;
+            background: rgba(255,255,255,0.05);
+            border-radius: 0.5rem;
+            cursor: pointer;
+        }
+
+        .progress-container {
+            grid-column: 1 / -1;
+            height: 5px;
+            background: rgba(255,255,255,0.1);
+            border-radius: 3px;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background: linear-gradient(90deg, var(--primary), var(--secondary));
+            width: 0%;
+            transition: width 0.1s linear;
+        }
+    </style>
 </head>
 <body>
+    <canvas id="visualizer"></canvas>
     <div class="container">
-        <canvas id="visualizer"></canvas>
+        <div class="playlist-container">
+            <div id="playlist" class="playlist"></div>
+        </div>
+        
         <div class="controls">
-            <input type="file" id="fileInput" accept="audio/*" multiple>
+            <input type="file" id="fileInput" hidden accept="audio/*" multiple directory webkitdirectory>
+            <button id="addMusic">Add Music</button>
+            <button id="prev">⏮</button>
+            <button id="playPause">⏯</button>
+            <button id="next">⏭</button>
             <button id="fullscreen">⛶</button>
-            <audio id="audioPlayer" controls></audio>
-            <div class="playlist-container">
-                <div id="playlist"></div>
-                <button id="newPlaylist">+ New Playlist</button>
+            <div class="progress-container">
+                <div class="progress-bar"></div>
             </div>
         </div>
     </div>
-    <script src="script.js"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+    <script>
+        // Audio Context Setup
+        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        const bufferLength = analyser.frequencyBinCount;
+        const dataArray = new Uint8Array(bufferLength);
+
+        // Player State
+        let currentTrack = 0;
+        let tracks = [];
+        let isPlaying = false;
+        let colorHue = 0;
+
+        // DOM Elements
+        const visualizer = document.getElementById('visualizer');
+        const ctx = visualizer.getContext('2d');
+        const audioElement = new Audio();
+        const progressBar = document.querySelector('.progress-bar');
+
+        // Visualizer Setup
+        function resizeCanvas() {
+            visualizer.width = window.innerWidth;
+            visualizer.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Audio Graph
+        const source = audioContext.createMediaElementSource(audioElement);
+        source.connect(analyser);
+        analyser.connect(audioContext.destination);
+
+        // Visualization Loop
+        function visualize() {
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.1)';
+            ctx.fillRect(0, 0, visualizer.width, visualizer.height);
+
+            analyser.getByteFrequencyData(dataArray);
+            
+            ctx.beginPath();
+            ctx.arc(
+                visualizer.width/2,
+                visualizer.height/2,
+                dataArray[0] * 1.5,
+                0,
+                Math.PI * 2
+            );
+            
+            const gradient = ctx.createRadialGradient(
+                visualizer.width/2,
+                visualizer.height/2,
+                0,
+                visualizer.width/2,
+                visualizer.height/2,
+                dataArray[0] * 2
+            );
+            
+            gradient.addColorStop(0, `hsl(${colorHue}, 100%, 50%)`);
+            gradient.addColorStop(1, `hsl(${(colorHue + 120) % 360}, 100%, 50%)`);
+            
+            ctx.strokeStyle = gradient;
+            ctx.lineWidth = dataArray[10] / 10;
+            ctx.stroke();
+            
+            colorHue = (colorHue + dataArray[5] / 50) % 360;
+            requestAnimationFrame(visualize);
+        }
+
+        // Player Controls
+        document.getElementById('playPause').addEventListener('click', () => {
+            if (isPlaying) {
+                audioElement.pause();
+            } else {
+                audioElement.play();
+                if (audioContext.state === 'suspended') audioContext.resume();
+            }
+            isPlaying = !isPlaying;
+        });
+
+        // File Handling
+        document.getElementById('addMusic').addEventListener('click', () => {
+            document.getElementById('fileInput').click();
+        });
+
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            const files = Array.from(e.target.files).filter(file => 
+                file.type.startsWith('audio/')
+            );
+            tracks = files;
+            updatePlaylist();
+            playTrack(0);
+        });
+
+        // Playlist Management
+        function updatePlaylist() {
+            const playlist = document.getElementById('playlist');
+            playlist.innerHTML = tracks
+                .map((track, i) => `
+                    <div class="song-item" data-index="${i}">
+                        ${track.name}
+                    </div>
+                `)
+                .join('');
+
+            new Sortable(playlist, {
+                animation: 150,
+                onEnd: (evt) => {
+                    const item = tracks.splice(evt.oldIndex, 1)[0];
+                    tracks.splice(evt.newIndex, 0, item);
+                    currentTrack = evt.newIndex;
+                }
+            });
+        }
+
+        // Playback Functions
+        function playTrack(index) {
+            currentTrack = index;
+            const track = tracks[currentTrack];
+            audioElement.src = URL.createObjectURL(track);
+            audioElement.play();
+            isPlaying = true;
+        }
+
+        // Progress Update
+        audioElement.addEventListener('timeupdate', () => {
+            const progress = (audioElement.currentTime / audioElement.duration) * 100;
+            progressBar.style.width = `${progress}%`;
+        });
+
+        // Fullscreen and Wake Lock
+        document.getElementById('fullscreen').addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+                navigator.wakeLock?.request('screen');
+            }
+        });
+
+        // Initialize Visualization
+        visualize();
+
+        // Auto-resume audio context
+        document.addEventListener('click', () => {
+            if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+        }, { once: true });
+    </script>
 </body>
 </html>
