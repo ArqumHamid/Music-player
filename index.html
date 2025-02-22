@@ -32,25 +32,35 @@
         
         .ui-container, .song-info {
             position: fixed;
-            bottom: 20px;
+            bottom: 0;
+            left: 0;
             width: 100%;
-            padding: 15px;
+            padding: 10px;
             display: flex;
+            flex-wrap: wrap;
             justify-content: center;
-            gap: 10px;
+            gap: 8px;
             backdrop-filter: blur(10px);
             background: rgba(0,0,0,0.5);
+            transition: opacity 0.3s;
+        }
+        
+        .fullscreen .ui-container, .fullscreen .song-info {
+            opacity: 0;
+            pointer-events: none;
         }
         
         button {
             background: rgba(255,255,255,0.1);
             border: 2px solid rgba(255,255,255,0.3);
             color: white;
-            padding: 12px 24px;
+            padding: 10px 18px;
             border-radius: 30px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 14px;
             transition: all 0.3s ease;
+            flex: 1 1 auto;
+            min-width: 120px;
         }
         
         button:hover {
@@ -73,6 +83,7 @@
         <button onclick="document.getElementById('fileInput').click()">🎵 Add Music</button>
         <button onclick="document.getElementById('bgInput').click()">🖼️ Add Background</button>
         <button id="playButton">▶ Play</button>
+        <button id="fullscreenButton">🌀 Fullscreen Mode</button>
     </div>
 
     <script>
@@ -84,6 +95,7 @@
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
         const playButton = document.getElementById('playButton');
+        const fullscreenButton = document.getElementById('fullscreenButton');
 
         async function requestWakeLock() {
             try {
@@ -127,12 +139,6 @@
                 const height = (dataArray[i] / 255) * canvas.height * 0.6;
                 ctx.fillStyle = `hsl(${(hue + i * 2) % 360}, 100%, 50%)`;
                 ctx.fillRect(i * barWidth, canvas.height - height, barWidth, height);
-                
-                // Draw horizontal stacked bars
-                for (let j = 0; j < Math.floor(dataArray[i] / 50); j++) {
-                    ctx.fillStyle = `hsl(${(hue + i * 5 + j * 10) % 360}, 100%, 50%)`;
-                    ctx.fillRect(i * barWidth, canvas.height - height + j * 5, barWidth, 5);
-                }
             }
             
             animationFrame = requestAnimationFrame(visualize);
@@ -166,6 +172,17 @@
         }
 
         playButton.addEventListener('click', playTrack);
+        fullscreenButton.addEventListener('click', async () => {
+            if (!document.fullscreenElement) {
+                await document.documentElement.requestFullscreen();
+                requestWakeLock();
+                document.body.classList.add('fullscreen');
+            } else {
+                await document.exitFullscreen();
+                document.body.classList.remove('fullscreen');
+                if (wakeLock) wakeLock.release();
+            }
+        });
 
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             tracks = Array.from(e.target.files);
