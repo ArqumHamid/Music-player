@@ -25,7 +25,7 @@
             left: 0;
             width: 100vw;
             height: 100vh;
-            z-index: 0;
+            z-index: -1;
         }
 
         .ui-container, .song-info {
@@ -84,7 +84,6 @@
         let tracks = [];
         let isPlaying = false;
         let wakeLock = null;
-        let hue = 0;
         let tunnel = [];
         const MAX_SEGMENTS = 100;
 
@@ -114,25 +113,20 @@
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
             
-            const energy = dataArray.slice(0, 20).reduce((a, b) => a + b) / 20;
-            hue = (hue + energy / 5) % 360;
-            
-            tunnel.push({ hue, energy });
+            tunnel.push([...dataArray]);
             if (tunnel.length > MAX_SEGMENTS) tunnel.shift();
             
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
             
-            tunnel.forEach((segment, index) => {
+            tunnel.forEach((data, index) => {
                 const progress = index / tunnel.length;
-                const size = (1 - progress) * canvas.width * 0.6 + segment.energy;
-                ctx.strokeStyle = `hsla(${segment.hue}, 100%, 60%, ${1 - progress})`;
-                ctx.lineWidth = 3;
+                const radius = (1 - progress) * canvas.width * 0.4 + Math.max(...data) * 0.6;
+                ctx.strokeStyle = `hsl(${(index * 10) % 360}, 100%, 50%)`;
+                ctx.lineWidth = 2;
                 ctx.beginPath();
-                ctx.arc(0, 0, size, 0, Math.PI * 2);
+                ctx.arc(0, 0, radius, 0, Math.PI * 2);
                 ctx.stroke();
             });
             
