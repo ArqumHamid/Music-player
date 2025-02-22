@@ -10,7 +10,7 @@
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
             background: #000;
             color: white;
@@ -18,7 +18,7 @@
             overflow: hidden;
             touch-action: none;
         }
-
+        
         #visualizer {
             position: fixed;
             top: 0;
@@ -26,8 +26,10 @@
             width: 100vw;
             height: 100vh;
             z-index: -1;
+            background-size: cover;
+            background-position: center;
         }
-
+        
         .ui-container, .song-info {
             position: fixed;
             bottom: 20px;
@@ -36,16 +38,10 @@
             display: flex;
             justify-content: center;
             gap: 10px;
-            transition: opacity 0.3s;
             backdrop-filter: blur(10px);
             background: rgba(0,0,0,0.5);
         }
-
-        .fullscreen .ui-container, .fullscreen .song-info {
-            opacity: 0;
-            pointer-events: none;
-        }
-
+        
         button {
             background: rgba(255,255,255,0.1);
             border: 2px solid rgba(255,255,255,0.3);
@@ -56,13 +52,13 @@
             font-size: 16px;
             transition: all 0.3s ease;
         }
-
+        
         button:hover {
             background: rgba(255,255,255,0.2);
             transform: scale(1.05);
         }
-
-        #fileInput {
+        
+        #fileInput, #bgInput {
             display: none;
         }
     </style>
@@ -73,22 +69,29 @@
     
     <div class="ui-container">
         <input type="file" id="fileInput" accept="audio/*" multiple>
+        <input type="file" id="bgInput" accept="image/*">
         <button onclick="document.getElementById('fileInput').click()">🎵 Add Music</button>
+        <button onclick="document.getElementById('bgInput').click()">🖼️ Add Background</button>
         <button id="playButton">▶ Play</button>
-        <button id="fullscreenButton">🌀 Enter Vortex</button>
     </div>
 
     <script>
-        let audioContext, analyser, source, animationFrame;
-        let currentTrack = 0;
+        let audioContext, analyser, source, animationFrame, wakeLock;
         let tracks = [];
         let isPlaying = false;
-        let wakeLock = null;
         let hue = 0;
 
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
         const playButton = document.getElementById('playButton');
+
+        async function requestWakeLock() {
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+            } catch (err) {
+                console.warn('Wake Lock request failed:', err);
+            }
+        }
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -112,58 +115,28 @@
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
 
-            // Downsample the data
-            const sampleSize = 4;
-            const downsampledData = [];
-            for (let i = 0; i < bufferLength; i += sampleSize) {
-                let sum = 0;
-                for (let j = 0; j < sampleSize && (i + j) < bufferLength; j++) {
-                    sum += dataArray[i + j];
-                }
-                downsampledData.push(sum / sampleSize);
-            }
-
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const barCount = downsampledData.length;
-            const barHeight = canvas.height / barCount;
-            const barWidthMultiplier = (canvas.width * 0.6) / 255; // Normalize to 60% of canvas width
-
-            hue += 0.5; // Increment hue every frame
-            hue %= 360; // Wrap around
-
+            
+            const barCount = dataArray.length;
+            const barWidth = canvas.width / barCount;
+            
+            hue += 0.5;
+            hue %= 360;
+            
             for (let i = 0; i < barCount; i++) {
-                const y = canvas.height - (i + 1) * barHeight;
-                const width = downsampledData[i] * barWidthMultiplier;
+                const height = (dataArray[i] / 255) * canvas.height * 0.6;
                 ctx.fillStyle = `hsl(${(hue + i * 2) % 360}, 100%, 50%)`;
-                ctx.fillRect(0, y, width, barHeight);
+                ctx.fillRect(i * barWidth, canvas.height - height, barWidth, height);
+                
+                // Draw horizontal stacked bars
+                for (let j = 0; j < Math.floor(dataArray[i] / 50); j++) {
+                    ctx.fillStyle = `hsl(${(hue + i * 5 + j * 10) % 360}, 100%, 50%)`;
+                    ctx.fillRect(i * barWidth, canvas.height - height + j * 5, barWidth, 5);
+                }
             }
-
+            
             animationFrame = requestAnimationFrame(visualize);
         }
-
-        async function toggleFullscreen() {
-            if (!document.fullscreenElement) {
-                await document.documentElement.requestFullscreen();
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                } catch (err) {
-                    console.warn('Wake Lock failed:', err);
-                }
-                document.body.classList.add('fullscreen');
-            } else {
-                await document.exitFullscreen();
-                document.body.classList.remove('fullscreen');
-            }
-        }
-
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement) {
-                wakeLock?.release();
-            }
-        });
-
-        document.getElementById('fullscreenButton').addEventListener('click', toggleFullscreen);
 
         const audioElement = new Audio();
         audioElement.addEventListener('loadedmetadata', () => {
@@ -182,11 +155,13 @@
                 isPlaying = true;
                 playButton.textContent = '⏸ Pause';
                 visualize();
+                requestWakeLock();
             } else {
                 audioElement.pause();
                 isPlaying = false;
                 playButton.textContent = '▶ Play';
                 cancelAnimationFrame(animationFrame);
+                if (wakeLock) wakeLock.release();
             }
         }
 
@@ -196,9 +171,16 @@
             tracks = Array.from(e.target.files);
             if (tracks.length) {
                 initAudio();
-                currentTrack = 0;
-                audioElement.src = URL.createObjectURL(tracks[currentTrack]);
-                document.getElementById('songInfo').textContent = `${tracks[currentTrack].name}`;
+                audioElement.src = URL.createObjectURL(tracks[0]);
+                document.getElementById('songInfo').textContent = `${tracks[0].name}`;
+            }
+        });
+
+        document.getElementById('bgInput').addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const imageUrl = URL.createObjectURL(file);
+                canvas.style.backgroundImage = `url('${imageUrl}')`;
             }
         });
     </script>
