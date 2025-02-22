@@ -75,7 +75,7 @@
         <input type="file" id="fileInput" accept="audio/*" multiple>
         <button onclick="document.getElementById('fileInput').click()">🎵 Add Music</button>
         <button id="playButton">▶ Play</button>
-        <button id="fullscreenButton"> Enter </button>
+        <button id="fullscreenButton">🌀 Enter Vortex</button>
     </div>
 
     <script>
@@ -113,15 +113,15 @@
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const barWidth = (canvas.width / bufferLength) * 2.5;
+            const barWidth = (canvas.width / bufferLength) * 4; // Increased bar width
             let barHeight;
             let x = 0;
 
             for (let i = 0; i < bufferLength; i++) {
-                barHeight = dataArray[i];
-                ctx.fillStyle = `hsl(${(i * 2) % 360}, 100%, 50%)`;
-                ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
-                x += barWidth + 2;
+                barHeight = dataArray[i] * 2; // Increased bar height for better visibility
+                ctx.fillStyle = `hsl(${(i * 2) % 360}, 100%, 50%)`; // Color changes based on frequency
+                ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
+                x += barWidth + 1;
             }
 
             animationFrame = requestAnimationFrame(visualize);
