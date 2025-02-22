@@ -113,15 +113,15 @@
 
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-            const barWidth = (canvas.width / bufferLength) * 5; // Increased bar width
+            const barWidth = (canvas.width / bufferLength) * 6; // Increased bar width
             let barHeight;
             let x = 0;
 
             for (let i = 0; i < bufferLength; i++) {
-                barHeight = dataArray[i] * 3; // Increased bar height for better visibility
-                ctx.fillStyle = `hsl(${(i * 2) % 360}, 100%, 70%)`; // Color changes based on frequency
+                barHeight = dataArray[i] * 2.5; // Increased bar height for better visibility
+                ctx.fillStyle = `hsl(${(i * 2) % 360}, 80%, 40%)`; // Color changes based on frequency
                 ctx.fillRect(x, canvas.height - barHeight, barWidth, barHeight);
-                x += barWidth + 1;
+                x += barWidth + 2;
             }
 
             animationFrame = requestAnimationFrame(visualize);
