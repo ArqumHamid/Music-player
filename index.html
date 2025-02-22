@@ -80,17 +80,18 @@
     </div>
 
     <script>
-        let audioContext, analyser, source;
+        let audioContext, analyser, source, animationFrame;
         let currentTrack = 0;
         let tracks = [];
+        let isPlaying = false;
         let wakeLock = null;
-        let tunnelSegments = [];
-        const MAX_SEGMENTS = 100;
         let hue = 0;
-        
+        let tunnel = [];
+        const MAX_SEGMENTS = 100;
+
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
-        
+
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -101,48 +102,40 @@
         function initAudio() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
-            analyser.fftSize = 512;
+            analyser.fftSize = 256;
         }
 
         function visualize() {
-            if (!analyser) return requestAnimationFrame(visualize);
+            if (!analyser) return;
 
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
+            
             const energy = dataArray.slice(0, 20).reduce((a, b) => a + b) / 20;
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            hue = (hue + energy / 5) % 360;
+            
+            tunnel.push({ hue, energy });
+            if (tunnel.length > MAX_SEGMENTS) tunnel.shift();
+            
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
-
+            
             ctx.save();
             ctx.translate(canvas.width / 2, canvas.height / 2);
-
-            tunnelSegments.push({
-                energy: energy,
-                hue: (hue + energy * 2) % 360
-            });
-
-            if (tunnelSegments.length > MAX_SEGMENTS) {
-                tunnelSegments.shift();
-            }
-
-            tunnelSegments.forEach((segment, index) => {
-                const progress = index / tunnelSegments.length;
-                const radius = 50 + (segment.energy * 2) + (index * 4);
-                const alpha = 1 - progress;
-                const angle = (index * 15) % 360;
-                
+            
+            tunnel.forEach((segment, index) => {
+                const progress = index / tunnel.length;
+                const size = (1 - progress) * canvas.width * 0.6 + segment.energy;
+                ctx.strokeStyle = `hsla(${segment.hue}, 100%, 60%, ${1 - progress})`;
+                ctx.lineWidth = 3;
                 ctx.beginPath();
-                ctx.arc(Math.cos(angle) * radius, Math.sin(angle) * radius, radius, 0, Math.PI * 2);
-                ctx.strokeStyle = `hsla(${segment.hue}, 80%, 60%, ${alpha})`;
-                ctx.lineWidth = 2 + (energy / 50);
+                ctx.arc(0, 0, size, 0, Math.PI * 2);
                 ctx.stroke();
             });
             
             ctx.restore();
-            hue = (hue + 0.5) % 360;
-            requestAnimationFrame(visualize);
+            animationFrame = requestAnimationFrame(visualize);
         }
 
         async function toggleFullscreen() {
@@ -168,12 +161,38 @@
 
         document.getElementById('fullscreenButton').addEventListener('click', toggleFullscreen);
 
+        const audioElement = new Audio();
+        function playTrack(index) {
+            if (index < 0 || index >= tracks.length) return;
+            currentTrack = index;
+            const file = tracks[currentTrack];
+            document.getElementById('songInfo').textContent = `${file.name} (${currentTrack + 1}/${tracks.length})`;
+            audioElement.src = URL.createObjectURL(file);
+            audioElement.play().then(() => {
+                connectAudioNodes();
+                visualize();
+            });
+            isPlaying = true;
+        }
+
+        function connectAudioNodes() {
+            if (source) source.disconnect();
+            source = audioContext.createMediaElementSource(audioElement);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+        }
+
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             tracks = Array.from(e.target.files);
             if (tracks.length) {
                 initAudio();
-                visualize();
+                playTrack(0);
             }
+        });
+
+        audioElement.addEventListener('ended', () => {
+            currentTrack = (currentTrack + 1) % tracks.length;
+            playTrack(currentTrack);
         });
     </script>
 </body>
