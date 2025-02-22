@@ -1,1 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neon Vortex Music Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #000;
+            color: white;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            touch-action: none;
+        }
+
+        #visualizer {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            z-index: 0;
+        }
+
+        .ui-container, .song-info {
+            position: fixed;
+            bottom: 20px;
+            width: 100%;
+            padding: 15px;
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            transition: opacity 0.3s;
+            backdrop-filter: blur(10px);
+            background: rgba(0,0,0,0.5);
+        }
+
+        .fullscreen .ui-container, .fullscreen .song-info {
+            display: none;
+        }
+
+        button {
+            background: rgba(255,255,255,0.1);
+            border: 2px solid rgba(255,255,255,0.3);
+            color: white;
+            padding: 12px 24px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: rgba(255,255,255,0.2);
+            transform: scale(1.05);
+        }
+
+        #fileInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="visualizer"></canvas>
+    <div class="song-info" id="songInfo"></div>
+    
+    <div class="ui-container">
+        <input type="file" id="fileInput" accept="audio/*" multiple>
+        <button onclick="document.getElementById('fileInput').click()">
+            🎵 Add Music
+        </button>
+        <button id="fullscreenButton">🌀 Enter Vortex</button>
+    </div>
+
+    <script>
+        let audioContext, analyser, source;
+        let currentTrack = 0;
+        let tracks = [];
+        let isPlaying = false;
+        let wakeLock = null;
+
+        const canvas = document.getElementById('visualizer');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function initAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 512;
+        }
+
+        function visualize() {
+            if (!analyser) return requestAnimationFrame(visualize);
+            const bufferLength = analyser.frequencyBinCount;
+            const dataArray = new Uint8Array(bufferLength);
+            analyser.getByteFrequencyData(dataArray);
+            const avgEnergy = dataArray.reduce((a, b) => a + b) / bufferLength;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = `hsl(${avgEnergy * 2}, 80%, 50%)`;
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height / 2, 50 + avgEnergy, 0, Math.PI * 2);
+            ctx.fill();
+            requestAnimationFrame(visualize);
+        }
+
+        async function toggleFullscreen() {
+            if (!document.fullscreenElement) {
+                await document.documentElement.requestFullscreen();
+                try {
+                    wakeLock = await navigator.wakeLock.request('screen');
+                } catch (err) {
+                    console.warn('Wake Lock failed:', err);
+                }
+                document.body.classList.add('fullscreen');
+            } else {
+                await document.exitFullscreen();
+                document.body.classList.remove('fullscreen');
+            }
+        }
+
+        document.addEventListener('fullscreenchange', () => {
+            if (!document.fullscreenElement) {
+                wakeLock?.release();
+            }
+        });
+
+        document.getElementById('fullscreenButton').addEventListener('click', toggleFullscreen);
+
+        document.getElementById('fileInput').addEventListener('change', async (e) => {
+            tracks = Array.from(e.target.files);
+            if (tracks.length) {
+                initAudio();
+                visualize();
+            }
+        });
+    </script>
+</body>
+</html>
 
