@@ -84,8 +84,6 @@
         let tracks = [];
         let isPlaying = false;
         let wakeLock = null;
-        let tunnel = [];
-        const MAX_SEGMENTS = 100;
 
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
@@ -112,25 +110,20 @@
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
-            
-            tunnel.push([...dataArray]);
-            if (tunnel.length > MAX_SEGMENTS) tunnel.shift();
-            
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.save();
-            ctx.translate(canvas.width / 2, canvas.height / 2);
-            
-            tunnel.forEach((data, index) => {
-                const progress = index / tunnel.length;
-                const radius = (1 - progress) * canvas.width * 0.4 + Math.max(...data) * 0.6;
-                ctx.strokeStyle = `hsl(${(index * 10) % 360}, 100%, 50%)`;
-                ctx.lineWidth = 2;
-                ctx.beginPath();
-                ctx.arc(0, 0, radius, 0, Math.PI * 2);
-                ctx.stroke();
-            });
-            
-            ctx.restore();
+
+            const barWidth = (canvas.width / bufferLength) * 2.5;
+            let barHeight;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+                barHeight = dataArray[i];
+                ctx.fillStyle = `hsl(${(i * 2) % 360}, 100%, 50%)`;
+                ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
+                x += barWidth + 1;
+            }
+
             animationFrame = requestAnimationFrame(visualize);
         }
 
