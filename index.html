@@ -75,7 +75,7 @@
         <input type="file" id="fileInput" accept="audio/*" multiple>
         <button onclick="document.getElementById('fileInput').click()">🎵 Add Music</button>
         <button id="playButton">▶ Play</button>
-        <button id="fullscreenButton">🌀 Enter Vortex</button>
+        <button id="fullscreenButton"> Enter </button>
     </div>
 
     <script>
@@ -121,7 +121,7 @@
                 barHeight = dataArray[i];
                 ctx.fillStyle = `hsl(${(i * 2) % 360}, 100%, 50%)`;
                 ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
-                x += barWidth + 1;
+                x += barWidth + 2;
             }
 
             animationFrame = requestAnimationFrame(visualize);
