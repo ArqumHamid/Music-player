@@ -69,13 +69,12 @@
 </head>
 <body>
     <canvas id="visualizer"></canvas>
-    <div class="song-info" id="songInfo"></div>
+    <div class="song-info" id="songInfo">No track playing</div>
     
     <div class="ui-container">
         <input type="file" id="fileInput" accept="audio/*" multiple>
-        <button onclick="document.getElementById('fileInput').click()">
-            🎵 Add Music
-        </button>
+        <button onclick="document.getElementById('fileInput').click()">🎵 Add Music</button>
+        <button id="playButton">▶ Play</button>
         <button id="fullscreenButton">🌀 Enter Vortex</button>
     </div>
 
@@ -91,6 +90,7 @@
 
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
+        const playButton = document.getElementById('playButton');
 
         function resizeCanvas() {
             canvas.width = window.innerWidth;
@@ -100,9 +100,11 @@
         resizeCanvas();
 
         function initAudio() {
-            audioContext = new (window.AudioContext || window.webkitAudioContext)();
-            analyser = audioContext.createAnalyser();
-            analyser.fftSize = 256;
+            if (!audioContext) {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                analyser = audioContext.createAnalyser();
+                analyser.fftSize = 256;
+            }
         }
 
         function visualize() {
@@ -162,37 +164,31 @@
         document.getElementById('fullscreenButton').addEventListener('click', toggleFullscreen);
 
         const audioElement = new Audio();
-        function playTrack(index) {
-            if (index < 0 || index >= tracks.length) return;
-            currentTrack = index;
-            const file = tracks[currentTrack];
-            document.getElementById('songInfo').textContent = `${file.name} (${currentTrack + 1}/${tracks.length})`;
-            audioElement.src = URL.createObjectURL(file);
-            audioElement.play().then(() => {
-                connectAudioNodes();
+        function playTrack() {
+            if (!tracks.length) return;
+            if (!isPlaying) {
+                audioElement.play();
+                isPlaying = true;
+                playButton.textContent = '⏸ Pause';
                 visualize();
-            });
-            isPlaying = true;
+            } else {
+                audioElement.pause();
+                isPlaying = false;
+                playButton.textContent = '▶ Play';
+                cancelAnimationFrame(animationFrame);
+            }
         }
 
-        function connectAudioNodes() {
-            if (source) source.disconnect();
-            source = audioContext.createMediaElementSource(audioElement);
-            source.connect(analyser);
-            analyser.connect(audioContext.destination);
-        }
+        playButton.addEventListener('click', playTrack);
 
         document.getElementById('fileInput').addEventListener('change', async (e) => {
             tracks = Array.from(e.target.files);
             if (tracks.length) {
                 initAudio();
-                playTrack(0);
+                currentTrack = 0;
+                audioElement.src = URL.createObjectURL(tracks[currentTrack]);
+                document.getElementById('songInfo').textContent = `${tracks[currentTrack].name}`;
             }
-        });
-
-        audioElement.addEventListener('ended', () => {
-            currentTrack = (currentTrack + 1) % tracks.length;
-            playTrack(currentTrack);
         });
     </script>
 </body>
