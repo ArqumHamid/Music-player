@@ -158,6 +158,15 @@
         document.getElementById('fullscreenButton').addEventListener('click', toggleFullscreen);
 
         const audioElement = new Audio();
+        audioElement.addEventListener('loadedmetadata', () => {
+            if (!audioContext) {
+                initAudio();
+            }
+            source = audioContext.createMediaElementSource(audioElement);
+            source.connect(analyser);
+            analyser.connect(audioContext.destination);
+        });
+
         function playTrack() {
             if (!tracks.length) return;
             if (!isPlaying) {
