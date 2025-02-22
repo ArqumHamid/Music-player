@@ -39,7 +39,8 @@
             background: rgba(0,0,0,0.5);
         }
 
-        .fullscreen .ui-container {
+        .fullscreen .ui-container, 
+        .fullscreen .song-info {
             opacity: 0;
             pointer-events: none;
         }
@@ -83,31 +84,20 @@
     
     <div class="ui-container">
         <input type="file" id="fileInput" accept="audio/*" multiple>
-        <button onclick="document.getElementById('fileInput').click()">
-            🎵 Add Music
-        </button>
+        <button onclick="document.getElementById('fileInput').click()">🎵 Add Music</button>
         <button id="fullscreenButton">🌀 Enter Vortex</button>
     </div>
 
     <script>
-        // Audio Context Setup
-        let audioContext, analyser, source;
-        let currentTrack = 0;
-        let tracks = [];
-        let isPlaying = false;
-        let wakeLock = null;
-        let rotation = 0;
-        let beatHistory = [];
-        
-        // Visualization Parameters
+        let audioContext, analyser, source, wakeLock = null;
+        let currentTrack = 0, tracks = [], isPlaying = false;
+        let rotation = 0, beatHistory = [], hue = 0;
+        const tunnelSegments = [], MAX_SEGMENTS = 120, BASE_RADIUS = 50;
+
         const canvas = document.getElementById('visualizer');
         const ctx = canvas.getContext('2d');
-        let hue = 0;
-        const tunnelSegments = [];
-        const MAX_SEGMENTS = 100;
-        const BASE_RADIUS = 50;
+        const audioElement = new Audio();
 
-        // Resize Handler
         function resizeCanvas() {
             canvas.width = window.innerWidth;
             canvas.height = window.innerHeight;
@@ -115,36 +105,26 @@
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        // Audio Initialization
         function initAudio() {
             audioContext = new (window.AudioContext || window.webkitAudioContext)();
             analyser = audioContext.createAnalyser();
             analyser.fftSize = 512;
         }
 
-        // Visualization Engine
         function visualize() {
             if (!analyser) return requestAnimationFrame(visualize);
 
             const bufferLength = analyser.frequencyBinCount;
             const dataArray = new Uint8Array(bufferLength);
             analyser.getByteFrequencyData(dataArray);
-
-            // Beat Detection
+            
             const energy = dataArray.slice(0, 20).reduce((a, b) => a + b) / 20;
             beatHistory.push(energy);
             if (beatHistory.length > 10) beatHistory.shift();
-            
-            const beatThreshold = Math.max(...beatHistory) * 0.8;
-            if (energy > beatThreshold) {
-                onBeatDetected(energy);
-            }
 
-            // Clear Canvas
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.1)';
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw Tunnel
             ctx.save();
             ctx.translate(canvas.width/2, canvas.height/2);
             ctx.rotate(rotation * Math.PI/180);
@@ -152,53 +132,29 @@
             tunnelSegments.forEach((segment, index) => {
                 const progress = index / tunnelSegments.length;
                 const alpha = 1 - progress;
-                const radius = BASE_RADIUS + (segment.energy * 2) + (index * 3);
-                
+                const radius = BASE_RADIUS + segment.energy * 2 + index * 4;
+
                 ctx.beginPath();
                 ctx.arc(0, 0, radius, 0, Math.PI * 2);
                 ctx.strokeStyle = `hsla(${segment.hue}, 80%, 60%, ${alpha})`;
-                ctx.lineWidth = 2 + (energy/50);
+                ctx.lineWidth = 3 + energy / 40;
                 ctx.stroke();
             });
-
-            ctx.restore();
-
-            // Update State
-            rotation += (energy/100) * (document.fullscreenElement ? 2 : 1);
-            hue = (hue + 0.5) % 360;
-
-            // Add new segment
-            tunnelSegments.push({
-                energy: energy,
-                hue: hue
-            });
             
-            if (tunnelSegments.length > MAX_SEGMENTS) {
-                tunnelSegments.shift();
-            }
+            ctx.restore();
+            rotation += (energy / 80) * (document.fullscreenElement ? 2 : 1);
+            hue = (hue + 1) % 360;
 
+            tunnelSegments.push({ energy, hue });
+            if (tunnelSegments.length > MAX_SEGMENTS) tunnelSegments.shift();
             requestAnimationFrame(visualize);
         }
 
-        function onBeatDetected(energy) {
-            hue = (hue + 50 + energy) % 360;
-            if (document.fullscreenElement) {
-                canvas.style.filter = `brightness(${100 + energy/2}%)`;
-            }
-        }
-
-        // Audio Controls
-        const audioElement = new Audio();
-        
         async function playTrack(index) {
             if (index < 0 || index >= tracks.length) return;
-            
             currentTrack = index;
             const file = tracks[currentTrack];
-            
-            document.getElementById('songInfo').textContent = 
-                `${file.name} (${currentTrack + 1}/${tracks.length})`;
-            
+            document.getElementById('songInfo').textContent = `${file.name} (${currentTrack + 1}/${tracks.length})`;
             audioElement.src = URL.createObjectURL(file);
             await audioElement.play();
             connectAudioNodes();
@@ -212,74 +168,28 @@
             analyser.connect(audioContext.destination);
         }
 
-        // Gesture Controls
-        function handleGesture(clientX) {
-            const screenThird = window.innerWidth / 3;
-            if (clientX < screenThird) {
-                previousTrack();
-            } else if (clientX > screenThird * 2) {
-                nextTrack();
-            }
-        }
-
-        window.addEventListener('click', e => handleGesture(e.clientX));
-        window.addEventListener('touchend', e => 
-            handleGesture(e.changedTouches[0].clientX));
-
-        function nextTrack() {
-            currentTrack = (currentTrack + 1) % tracks.length;
-            playTrack(currentTrack);
-        }
-
-        function previousTrack() {
-            currentTrack = (currentTrack - 1 + tracks.length) % tracks.length;
-            playTrack(currentTrack);
-        }
-
-        // Fullscreen Management
         async function toggleFullscreen() {
             if (!document.fullscreenElement) {
                 await document.documentElement.requestFullscreen();
-                try {
-                    wakeLock = await navigator.wakeLock.request('screen');
-                } catch (err) {
-                    console.warn('Wake Lock failed:', err);
-                }
+                try { wakeLock = await navigator.wakeLock.request('screen'); } catch (err) { console.warn(err); }
                 document.body.classList.add('fullscreen');
             } else {
                 await document.exitFullscreen();
+                wakeLock?.release();
                 document.body.classList.remove('fullscreen');
             }
         }
 
-        document.addEventListener('fullscreenchange', () => {
-            if (!document.fullscreenElement) {
-                wakeLock?.release();
-            }
-        });
+        document.addEventListener('fullscreenchange', () => { if (!document.fullscreenElement) wakeLock?.release(); });
 
-        // File Handling
-        document.getElementById('fileInput').addEventListener('change', async (e) => {
+        document.getElementById('fileInput').addEventListener('change', (e) => {
             tracks = Array.from(e.target.files);
-            if (tracks.length) {
-                initAudio();
-                visualize();
-                playTrack(0);
-            }
+            if (tracks.length) { initAudio(); visualize(); playTrack(0); }
         });
 
-        // Fullscreen Button
         document.getElementById('fullscreenButton').addEventListener('click', toggleFullscreen);
-
-        // Auto-resume Audio Context
-        document.addEventListener('click', () => {
-            if (audioContext?.state === 'suspended') {
-                audioContext.resume();
-            }
-        }, { once: true });
-
-        // Track Ended Handler
-        audioElement.addEventListener('ended', nextTrack);
+        document.addEventListener('click', () => { if (audioContext?.state === 'suspended') audioContext.resume(); }, { once: true });
+        audioElement.addEventListener('ended', () => playTrack((currentTrack + 1) % tracks.length));
     </script>
 </body>
 </html>
